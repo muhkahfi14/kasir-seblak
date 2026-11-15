@@ -1,0 +1,385 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  OWNER
+  CASHIER
+}
+
+enum PaymentMethod {
+  CASH
+  QRIS
+}
+
+enum PaymentStatus {
+  PAID
+  CANCELLED
+  REFUNDED
+}
+
+enum SaleStatus {
+  COMPLETED
+  CANCELLED
+  REFUNDED
+}
+
+enum PurchaseStatus {
+  DRAFT
+  RECEIVED
+}
+
+enum ExpenseCategory {
+  GAS
+  ELECTRICITY_WATER
+  RENT
+  SALARY
+  TRANSPORT
+  PACKAGING
+  MARKETING
+  CLEANING
+  MAINTENANCE
+  ADMIN_FEE
+  LOSS_DAMAGE
+  OTHER
+}
+
+enum CapitalType {
+  DEPOSIT
+  WITHDRAWAL
+  CASH_ADDITION
+}
+
+enum MovementType {
+  PURCHASE
+  SALE
+  SALE_REVERSAL
+  WASTE
+  ADJUSTMENT_IN
+  ADJUSTMENT_OUT
+}
+
+enum ExpenseType {
+  OPERATIONAL
+  INVENTORY_PURCHASE
+  ASSET_PURCHASE
+  PERSONAL_WITHDRAWAL
+  CAPITAL_DEPOSIT
+}
+
+model User {
+  id                  String               @id @default(cuid())
+  email               String               @unique
+  name                String
+  passwordHash        String
+  role                UserRole
+  isActive            Boolean              @default(true)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  purchases           Purchase[]
+  inventoryMovements  InventoryMovement[]
+  sales               Sale[]
+  expenses            Expense[]
+  capitalTransactions CapitalTransaction[]
+  cashSessions        CashSession[]
+  paymentsProcessed   Payment[]
+  auditLogs           AuditLog[]
+}
+
+model StoreSettings {
+  id             String   @id @default(cuid())
+  name           String   @default("Seblak Prasmanan")
+  address        String?
+  phone          String?
+  timezone       String   @default("Asia/Jakarta")
+  enableDiscount Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model MenuCategory {
+  id        String     @id @default(cuid())
+  name      String
+  sortOrder Int        @default(0)
+  isActive  Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  menuItems MenuItem[]
+  toppings  Topping[]
+}
+
+model MenuItem {
+  id              String       @id @default(cuid())
+  sku             String       @unique
+  name            String
+  description     String?
+  categoryId      String
+  category        MenuCategory @relation(fields: [categoryId], references: [id])
+  basePrice       Decimal      @db.Decimal(12, 2)
+  isActive        Boolean      @default(true)
+  imageUrl        String?
+  prepTimeMinutes Int?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  recipes         MenuRecipe[]
+  saleItems       SaleItem[]
+
+  @@index([categoryId])
+}
+
+model Topping {
+  id               String            @id @default(cuid())
+  name             String
+  categoryId       String?
+  category         MenuCategory?     @relation(fields: [categoryId], references: [id])
+  price            Decimal           @db.Decimal(12, 2)
+  unit             String
+  isActive         Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  recipes          ToppingRecipe[]
+  saleItemToppings SaleItemTopping[]
+
+  @@index([categoryId])
+}
+
+model Ingredient {
+  id                 String              @id @default(cuid())
+  name               String
+  category           String
+  unit               String
+  stock              Decimal             @default(0) @db.Decimal(12, 2)
+  minStock           Decimal             @default(0) @db.Decimal(12, 2)
+  avgCost            Decimal             @default(0) @db.Decimal(12, 2)
+  isActive           Boolean             @default(true)
+  storageLocation    String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  menuRecipes        MenuRecipe[]
+  toppingRecipes     ToppingRecipe[]
+  purchaseItems      PurchaseItem[]
+  inventoryMovements InventoryMovement[]
+}
+
+model MenuRecipe {
+  id           String     @id @default(cuid())
+  menuItemId   String
+  menuItem     MenuItem   @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  ingredientId String
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
+  quantity     Decimal    @db.Decimal(12, 2)
+  unit         String
+
+  @@unique([menuItemId, ingredientId])
+}
+
+model ToppingRecipe {
+  id           String     @id @default(cuid())
+  toppingId    String
+  topping      Topping    @relation(fields: [toppingId], references: [id], onDelete: Cascade)
+  ingredientId String
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
+  quantity     Decimal    @db.Decimal(12, 2)
+  unit         String
+
+  @@unique([toppingId, ingredientId])
+}
+
+model Supplier {
+  id        String     @id @default(cuid())
+  name      String
+  phone     String?
+  address   String?
+  isActive  Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  purchases Purchase[]
+}
+
+model Purchase {
+  id             String         @id @default(cuid())
+  purchaseNumber String         @unique
+  supplierId     String?
+  supplier       Supplier?      @relation(fields: [supplierId], references: [id])
+  status         PurchaseStatus
+  totalAmount    Decimal        @db.Decimal(12, 2)
+  notes          String?
+  receivedAt     DateTime?
+  createdBy      String
+  creator        User           @relation(fields: [createdBy], references: [id])
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  items          PurchaseItem[]
+}
+
+model PurchaseItem {
+  id           String     @id @default(cuid())
+  purchaseId   String
+  purchase     Purchase   @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  ingredientId String
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id])
+  quantity     Decimal    @db.Decimal(12, 2)
+  unit         String
+  pricePerUnit Decimal    @db.Decimal(12, 2)
+  totalPrice   Decimal    @db.Decimal(12, 2)
+}
+
+model InventoryMovement {
+  id           String       @id @default(cuid())
+  ingredientId String
+  ingredient   Ingredient   @relation(fields: [ingredientId], references: [id])
+  type         MovementType
+  quantity     Decimal      @db.Decimal(12, 2)
+  unitCost     Decimal?     @db.Decimal(12, 2)
+  reference    String?
+  referenceId  String?
+  notes        String?
+  createdBy    String?
+  creator      User?        @relation(fields: [createdBy], references: [id])
+  createdAt    DateTime     @default(now())
+
+  @@index([ingredientId, createdAt])
+}
+
+model Sale {
+  id              String       @id @default(cuid())
+  saleNumber      String       @unique
+  clientRequestId String?      @unique
+  status          SaleStatus
+  subtotal        Decimal      @db.Decimal(12, 2)
+  discountAmount  Decimal      @default(0) @db.Decimal(12, 2)
+  totalAmount     Decimal      @db.Decimal(12, 2)
+  totalHpp        Decimal      @db.Decimal(12, 2)
+  cashSessionId   String?
+  cashSession     CashSession? @relation(fields: [cashSessionId], references: [id])
+  notes           String?
+  createdBy       String
+  creator         User         @relation(fields: [createdBy], references: [id])
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  items           SaleItem[]
+  payment         Payment?
+
+  @@index([createdAt])
+  @@index([status])
+}
+
+model SaleItem {
+  id         String            @id @default(cuid())
+  saleId     String
+  sale       Sale              @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  menuItemId String?
+  menuItem   MenuItem?         @relation(fields: [menuItemId], references: [id])
+  menuName   String
+  menuPrice  Decimal           @db.Decimal(12, 2)
+  quantity   Int
+  hpp        Decimal           @db.Decimal(12, 2)
+  subtotal   Decimal           @db.Decimal(12, 2)
+  toppings   SaleItemTopping[]
+}
+
+model SaleItemTopping {
+  id           String    @id @default(cuid())
+  saleItemId   String
+  saleItem     SaleItem  @relation(fields: [saleItemId], references: [id], onDelete: Cascade)
+  toppingId    String?
+  topping      Topping?  @relation(fields: [toppingId], references: [id])
+  toppingName  String
+  toppingPrice Decimal   @db.Decimal(12, 2)
+  quantity     Int
+  hpp          Decimal   @db.Decimal(12, 2)
+  subtotal     Decimal   @db.Decimal(12, 2)
+}
+
+model Payment {
+  id             String        @id @default(cuid())
+  saleId         String        @unique
+  sale           Sale          @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  paymentMethod  PaymentMethod
+  amount         Decimal       @db.Decimal(12, 2)
+  amountReceived Decimal?      @db.Decimal(12, 2)
+  changeAmount   Decimal?      @db.Decimal(12, 2)
+  status         PaymentStatus @default(PAID)
+  paidAt         DateTime
+  cashierId      String
+  cashier        User          @relation(fields: [cashierId], references: [id])
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([paymentMethod, paidAt])
+  @@index([status])
+  @@index([cashierId])
+}
+
+model Expense {
+  id            String          @id @default(cuid())
+  expenseNumber String          @unique
+  category      ExpenseCategory
+  expenseType   ExpenseType     @default(OPERATIONAL)
+  description   String
+  amount        Decimal         @db.Decimal(12, 2)
+  paymentMethod PaymentMethod
+  status        String          @default("PAID")
+  notes         String?
+  receiptUrl    String?
+  createdBy     String
+  creator       User            @relation(fields: [createdBy], references: [id])
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([createdAt])
+  @@index([category])
+}
+
+model CapitalTransaction {
+  id          String      @id @default(cuid())
+  type        CapitalType
+  amount      Decimal     @db.Decimal(12, 2)
+  description String
+  reference   String?
+  createdBy   String
+  creator     User        @relation(fields: [createdBy], references: [id])
+  createdAt   DateTime    @default(now())
+
+  @@index([createdAt])
+}
+
+model CashSession {
+  id                String    @id @default(cuid())
+  cashierUserId     String
+  cashier           User      @relation(fields: [cashierUserId], references: [id])
+  openedAt          DateTime  @default(now())
+  closedAt          DateTime?
+  openingCash       Decimal   @db.Decimal(12, 2)
+  totalCashSales    Decimal   @default(0) @db.Decimal(12, 2)
+  totalCashExpenses Decimal   @default(0) @db.Decimal(12, 2)
+  expectedCash      Decimal   @default(0) @db.Decimal(12, 2)
+  actualCash        Decimal?  @db.Decimal(12, 2)
+  difference        Decimal?  @db.Decimal(12, 2)
+  notes             String?
+  isClosed          Boolean   @default(false)
+  sales             Sale[]
+
+  @@index([cashierUserId, openedAt])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String
+  entity    String
+  entityId  String
+  oldData   Json?
+  newData   Json?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
+

@@ -1,0 +1,12 @@
+pg_data
+node_modules
+apps/api/node_modules
+apps/web/node_modules
+apps/web/dist
+api/.vercel
+.vercel
+.env
+.env.*
+!.env.example
+*.dump
+*.log
